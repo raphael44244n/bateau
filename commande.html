@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Télécommande </title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .cockpit-container {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 20px;
+            padding: 30px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            margin: 0;
+            letter-spacing: 2px;
+            color: #38bdf8;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: 4px;
+            margin-bottom: 25px;
+        }
+
+        /* Bouton Bluetooth */
+        button {
+            width: 100%;
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #0369a1, #075985);
+        }
+
+        /* Cartes de contrôle */
+        .control-card {
+            background-color: #0f172a;
+            border-radius: 12px;
+            padding: 18px;
+            margin-top: 20px;
+            border: 1px solid #334155;
+        }
+
+        .control-card h2 {
+            font-size: 1rem;
+            margin-top: 0;
+            color: #cbd5e1;
+        }
+
+        .gauge-display {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #38bdf8;
+            margin: 10px 0;
+        }
+
+        .gauge-display small {
+            font-size: 1rem;
+            color: #94a3b8;
+        }
+
+        /* Curseurs / Sliders */
+        .slider-wrapper {
+            margin: 15px 0;
+        }
+
+        input[type=range] {
+            width: 100%;
+            accent-color: #38bdf8;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="cockpit-container">
+        <header>
+            <h1>POSTE DE PILOTAGE</h1>
+            <p class="subtitle">Télécommande micro:bit BLE</p>
+        </header>
+
+        <!-- Section Connexion Bluetooth (sans texte de statut) -->
+        <section class="connect-section">
+            <button id="connectBtn" onclick="connectBluetooth()">Connecter</button>
+        </section>
+
+        <!-- Section Contrôle du Moteur -->
+        <section class="control-card">
+            <h2>Machine</h2>
+            <div class="gauge-display">
+                <span id="throttleVal">0</span> <small>tr/min</small>
+            </div>
+            <div class="slider-wrapper">
+                <input type="range" id="throttle" min="0" max="1500" value="0" oninput="updateThrottle(this.value)">
+            </div>
+        </section>
+
+        <!-- Section Contrôle du Gouvernail -->
+        <section class="control-card">
+            <h2>Barre</h2>
+            <div class="gauge-display">
+                <span id="rudderVal">0</span>°
+            </div>
+            <div class="slider-wrapper">
+                <input type="range" id="rudder" min="-40" max="40" value="0" oninput="updateRudder(this.value)">
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let bluetoothDevice;
+        let uartCharacteristic;
+
+        // UUIDs du service Bluetooth UART de la micro:bit
+        const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const UART_TX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+        // Fonction de connexion Bluetooth (modifiée pour ne pas modifier de texte de statut)
+        async function connectBluetooth() {
+            const btn = document.getElementById('connectBtn');
+            try {
+                btn.innerText = "Recherche en cours...";
+
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'BBC micro:bit' }],
+                    optionalServices: [UART_SERVICE_UUID]
+                });
+
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                uartCharacteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+
+                btn.innerText = "✅ Connecté (" + bluetoothDevice.name + ")";
+                btn.style.background = "linear-gradient(135deg, #166534, #15803d)";
+            } catch (error) {
+                console.error(error);
+                btn.innerText = "❌ Échec - Réessayer";
+                btn.style.background = "linear-gradient(135deg, #991b1b, #b91c1c)";
+            }
+        }
+
+        // Transmission de données à la micro:bit
+        function sendData(data) {
+            if (uartCharacteristic) {
+                let encoder = new TextEncoder();
+                uartCharacteristic.writeValue(encoder.encode(data + '\n'))
+                    .catch(err => console.error("Erreur d'envoi :", err));
+            }
+        }
+
+        // Mise à jour et envoi de la position du gouvernail (G:valeur) - Le curseur reste en place
+        function updateRudder(val) {
+            document.getElementById('rudderVal').innerText = val;
+            sendData('G:' + val);
+        }
+
+        // Mise à jour et envoi de la vitesse moteur (M:valeur)
+        function updateThrottle(val) {
+            document.getElementById('throttleVal').innerText = val;
+            sendData('M:' + val);
+        }
+    </script>
+</body>
+</html>
